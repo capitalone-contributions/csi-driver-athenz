@@ -40,6 +40,21 @@ const DefaultKeystorePassword = "changeit"
 // leaking the password via `ps`.
 const KeystorePasswordEnvVar = "KEYSTORE_PASSWORD"
 
+// WriteModeInPlace and WriteModeAtomicDir are the accepted values of
+// --volume-write-mode. They mirror the driver package's constants of the same
+// name, duplicated here so flag parsing stays independent of the driver
+// package, as DefaultKeystorePassword already is.
+const (
+	// WriteModeInPlace rewrites the existing volume files so their inodes, and
+	// therefore the inotify watches consumers such as istio-agent hold on them,
+	// survive a certificate renewal.
+	WriteModeInPlace = "in-place"
+
+	// WriteModeAtomicDir restores the upstream csi-lib timestamped-directory
+	// writer. Rollback path only.
+	WriteModeAtomicDir = "atomic-dir"
+)
+
 // Options are the CSI Driver flag options.
 type Options struct {
 	*flags.Flags
@@ -139,6 +154,11 @@ type OptionsVolume struct {
 	// KeystoreAlias is the alias used for the private key entry inside the
 	// JKS keystore.
 	KeystoreAlias string
+
+	// WriteMode selects how certificate data is written into the Pod's volume.
+	// One of WriteModeInPlace (default) or WriteModeAtomicDir; validated during
+	// option completion.
+	WriteMode string
 }
 
 // OptionsAthenz is options specific to Athenz.
@@ -245,6 +265,15 @@ func (o *Options) addVolumeFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&o.Volume.KeystoreAlias, "keystore-alias", "service",
 		"Alias used for the private key entry inside the JKS keystore. "+
 			"Requires --enable-keystore.")
+
+	fs.StringVar(&o.Volume.WriteMode, "volume-write-mode", WriteModeInPlace,
+		"How certificate data is written into the pod's volume. `in-place` "+
+			"(default) rewrites the existing files, keeping their inodes so "+
+			"inotify watches held by consumers such as istio-agent survive a "+
+			"renewal. `atomic-dir` restores the upstream csi-lib writer, which "+
+			"replaces the files via a new timestamped directory on every write "+
+			"and so silently breaks those watches; it is provided as a rollback "+
+			"path only.")
 }
 
 func (o *Options) addAthenzFlags(fs *pflag.FlagSet) {
@@ -265,7 +294,23 @@ func (o *Options) Complete() error {
 	if err := o.Flags.Complete(); err != nil {
 		return err
 	}
+	if err := o.validateWriteMode(); err != nil {
+		return err
+	}
 	return o.loadKeystorePassword()
+}
+
+// validateWriteMode rejects an unrecognised --volume-write-mode at startup,
+// rather than letting the driver silently fall back to a write mode the
+// operator did not ask for.
+func (o *Options) validateWriteMode() error {
+	switch o.Volume.WriteMode {
+	case WriteModeInPlace, WriteModeAtomicDir:
+		return nil
+	default:
+		return fmt.Errorf("invalid --volume-write-mode %q, must be one of %q or %q",
+			o.Volume.WriteMode, WriteModeInPlace, WriteModeAtomicDir)
+	}
 }
 
 // loadKeystorePassword resolves Volume.KeystorePassword using the following

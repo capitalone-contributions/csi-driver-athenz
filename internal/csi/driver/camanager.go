@@ -22,12 +22,30 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cert-manager/csi-lib/storage"
+	"github.com/cert-manager/csi-lib/metadata"
 	"github.com/go-logr/logr"
 
 	"github.com/AthenZ/csi-driver-athenz/internal/csi/rootca"
 	"github.com/AthenZ/csi-driver-athenz/internal/version"
 )
+
+// volumeStore is the storage surface camanager needs: on top of the
+// storage.Interface methods it reads files back from mounted pod volumes, so it
+// cannot be satisfied by a metadata-only store. Both *storage.Filesystem and
+// *inplaceWriteStorage implement it.
+type volumeStore interface {
+	// ListVolumes returns the IDs of all volumes in the storage backend.
+	ListVolumes() ([]string, error)
+
+	// ReadMetadata reads the metadata for a single volume.
+	ReadMetadata(volumeID string) (metadata.Metadata, error)
+
+	// ReadFile reads the named file from the volume's data directory.
+	ReadFile(volumeID, name string) ([]byte, error)
+
+	// WriteFiles writes the given data into the volume's data directory.
+	WriteFiles(meta metadata.Metadata, files map[string][]byte) error
+}
 
 // camanager is a process responsible for distributing trust bundles to
 // mounting pods.
@@ -35,9 +53,9 @@ type camanager struct {
 	// log is the logger for camanager.
 	log logr.Logger
 
-	// store is the csi-lib file system storage implementation. Must by file
-	// system in order to read volumes back from mounted pods.
-	store *storage.Filesystem
+	// store must be able to read volumes back from mounted pods, and must be
+	// the same store the driver writes with so both use the same write mode.
+	store volumeStore
 
 	// rootCAs exposes the current trust bundle to be propagated, and signals
 	// when a new trust bundle is available.
@@ -55,7 +73,7 @@ type camanager struct {
 // newCAManager constructs a new camanager which distributes new trust bundles
 // to mounted pods, as they are changed.
 func newCAManager(log logr.Logger,
-	store *storage.Filesystem,
+	store volumeStore,
 	rootCAs rootca.Interface,
 	certFileName, keyFileName, caFileName string,
 ) *camanager {

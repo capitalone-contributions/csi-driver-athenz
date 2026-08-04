@@ -25,9 +25,9 @@ import (
 )
 
 // Test_loadKeystorePassword_Precedence covers the resolution order:
-//   1. KEYSTORE_PASSWORD env var (when non-empty)
-//   2. --keystore-password-file contents
-//   3. built-in default "changeit"
+//  1. KEYSTORE_PASSWORD env var (when non-empty)
+//  2. --keystore-password-file contents
+//  3. built-in default "changeit"
 //
 // It also covers the disabled-feature short-circuit and the empty-file
 // fail-fast behaviour.
@@ -102,5 +102,30 @@ func Test_loadKeystorePassword_Precedence(t *testing.T) {
 		err := o.loadKeystorePassword()
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "reading --keystore-password-file")
+	})
+}
+
+// Test_validateWriteMode covers the accepted --volume-write-mode values and the
+// fail-fast on anything else, so a typo cannot silently leave the driver on a
+// write mode the operator did not ask for.
+func Test_validateWriteMode(t *testing.T) {
+	t.Run("in-place", func(t *testing.T) {
+		o := &Options{}
+		o.Volume.WriteMode = WriteModeInPlace
+		require.NoError(t, o.validateWriteMode())
+	})
+
+	t.Run("atomic-dir", func(t *testing.T) {
+		o := &Options{}
+		o.Volume.WriteMode = WriteModeAtomicDir
+		require.NoError(t, o.validateWriteMode())
+	})
+
+	t.Run("unknown-is-fatal", func(t *testing.T) {
+		o := &Options{}
+		o.Volume.WriteMode = "atomic"
+		err := o.validateWriteMode()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), `invalid --volume-write-mode "atomic"`)
 	})
 }
