@@ -506,8 +506,8 @@
       "type": "array"
     },
     "helm-values.app.driver.volumeWriteMode": {
-      "default": "in-place",
-      "description": "-- Controls how certificate data is written into pod volumes.\n`in-place` (default) rewrites existing files so consumer inotify\nwatches survive renewals. `atomic-dir` restores the upstream csi-lib timestamped-directory writer as a rollback path, and silently breaks raw-inotify consumers such as istio-agent on every renewal.",
+      "default": "atomic-dir",
+      "description": "-- Controls how certificate data is written into pod volumes.\n`atomic-dir` (default) is the upstream csi-lib timestamped-directory\nwriter; it silently breaks raw-inotify consumers such as istio-agent on every renewal, because replacing a file destroys the watched inode. `in-place` rewrites existing files instead, so those watches survive renewals.",
       "type": "string"
     },
     "helm-values.app.driver.volumes": {

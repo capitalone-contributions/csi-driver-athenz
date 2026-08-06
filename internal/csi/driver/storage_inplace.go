@@ -42,9 +42,9 @@ const (
 	// certificate until it expires.
 	WriteModeInPlace = "in-place"
 
-	// WriteModeAtomicDir is the upstream csi-lib behaviour: every write creates
-	// a new timestamped directory, re-points the `..data` symlink and deletes
-	// the previous directory. Kept only as a rollback path.
+	// WriteModeAtomicDir is the upstream csi-lib behaviour and the default:
+	// every write creates a new timestamped directory, re-points the `..data`
+	// symlink and deletes the previous directory.
 	WriteModeAtomicDir = "atomic-dir"
 )
 

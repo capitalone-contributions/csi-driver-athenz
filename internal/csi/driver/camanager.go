@@ -205,7 +205,7 @@ func (c *camanager) updateRootCAFiles() error {
 		// The atomic writer deletes every file that is not in its payload, so
 		// the certificate and key have to be read back and written again next to
 		// the CA bundle. This is the path with the renewal race described above;
-		// it only runs in the atomic-dir rollback mode.
+		// it only runs in atomic-dir mode.
 		certData, err := c.store.ReadFile(volumeID, c.certFileName)
 		if err != nil {
 			return fmt.Errorf("%q: failed to read certificate file from volume to perform write: %w",

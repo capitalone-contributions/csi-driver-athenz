@@ -137,10 +137,10 @@ type Options struct {
 	KeystoreAlias string
 
 	// WriteMode selects how certificate data is written into the Pod's volume.
-	// WriteModeInPlace (the default when empty) rewrites the existing files so
-	// their inodes - and therefore the inotify watches consumers hold on them -
-	// survive a renewal. WriteModeAtomicDir restores the upstream csi-lib
-	// timestamped-directory writer and exists only as a rollback path.
+	// WriteModeAtomicDir (the default when empty) is the upstream csi-lib
+	// timestamped-directory writer. WriteModeInPlace rewrites the existing
+	// files instead, so their inodes - and therefore the inotify watches
+	// consumers hold on them - survive a renewal.
 	WriteMode string
 
 	// RestConfig is used for interacting with the Kubernetes API server.
@@ -326,11 +326,11 @@ func New(ctx context.Context, log logr.Logger, opts Options) (*Driver, error) {
 	// `..data` layout on a CA bundle update and break every live watch again.
 	var caStore volumeStore
 	switch opts.WriteMode {
-	case "", WriteModeInPlace:
+	case WriteModeInPlace:
 		inplace := newInplaceWriteStorage(store, d.certFileName)
 		d.store = inplace
 		caStore = inplace
-	case WriteModeAtomicDir:
+	case "", WriteModeAtomicDir:
 		atomicDir := newAtomicDirStorage(store)
 		d.store = atomicDir
 		caStore = atomicDir

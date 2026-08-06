@@ -158,12 +158,12 @@ managed volumes.
 #### **app.driver.volumeWriteMode** ~ `string`
 > Default value:
 > ```yaml
-> in-place
+> atomic-dir
 > ```
 
 -- Controls how certificate data is written into pod volumes.  
-`in-place` (default) rewrites existing files so consumer inotify  
-watches survive renewals. `atomic-dir` restores the upstream csi-lib timestamped-directory writer as a rollback path, and silently breaks raw-inotify consumers such as istio-agent on every renewal.
+`atomic-dir` (default) is the upstream csi-lib timestamped-directory  
+writer; it silently breaks raw-inotify consumers such as istio-agent on every renewal, because replacing a file destroys the watched inode. `in-place` rewrites existing files instead, so those watches survive renewals.
 #### **app.driver.keystore.enabled** ~ `bool`
 > Default value:
 > ```yaml
