@@ -47,6 +47,14 @@ type volumeStore interface {
 	WriteFiles(meta metadata.Metadata, files map[string][]byte) error
 }
 
+// singleFileWriter is implemented by stores that can update one file of a volume
+// without touching the others. *inplaceWriteStorage does; the csi-lib atomic
+// writer cannot, because it treats its payload as the complete desired contents
+// of the volume and deletes everything else.
+type singleFileWriter interface {
+	WriteFile(meta metadata.Metadata, name string, data []byte) error
+}
+
 // camanager is a process responsible for distributing trust bundles to
 // mounting pods.
 type camanager struct {
@@ -158,12 +166,46 @@ func (c *camanager) updateRootCAFiles() error {
 		return fmt.Errorf("failed to list managed volumes: %w", err)
 	}
 
+	// A store that can update a single file lets the trust bundle be published
+	// without reading or rewriting the certificate and key at all, which removes
+	// a race with certificate renewal: the full-payload path below reads the
+	// current keypair off the volume and writes that snapshot back alongside the
+	// new CA bundle, so a renewal landing between the read and the write is
+	// silently rolled back to the old pair while the renewal's metadata records
+	// success, and nothing retries until the next renewal. Writing only the CA
+	// file means the worst a concurrent renewal can do is write identical bytes
+	// to it.
+	singleFile, canWriteSingleFile := c.store.(singleFileWriter)
+
 	for _, volumeID := range volumeIDs {
 		meta, err := c.store.ReadMetadata(volumeID)
 		if err != nil {
 			return fmt.Errorf("%q: failed to read metadata from volume: %w", volumeID, err)
 		}
 
+		caPEM := c.rootCAs.CertificatesPEM()
+
+		// No need to re-write CA data again if it hasn't changed on file. A read
+		// error means the file cannot be confirmed to match, so write it.
+		caData, err := c.store.ReadFile(volumeID, c.caFileName)
+		if err == nil && bytes.Equal(caData, caPEM) {
+			continue
+		}
+
+		if canWriteSingleFile {
+			if err := singleFile.WriteFile(meta, c.caFileName, caPEM); err != nil {
+				return fmt.Errorf("%q: failed to write new ca data to volume: %w",
+					volumeID, err)
+			}
+
+			log.Info("updated CA file on volume", "volume", volumeID)
+			continue
+		}
+
+		// The atomic writer deletes every file that is not in its payload, so
+		// the certificate and key have to be read back and written again next to
+		// the CA bundle. This is the path with the renewal race described above;
+		// it only runs in the atomic-dir rollback mode.
 		certData, err := c.store.ReadFile(volumeID, c.certFileName)
 		if err != nil {
 			return fmt.Errorf("%q: failed to read certificate file from volume to perform write: %w",
@@ -175,16 +217,10 @@ func (c *camanager) updateRootCAFiles() error {
 				volumeID, err)
 		}
 
-		// No need to re-write CA data again if it hasn't changed on file.
-		caData, err := c.store.ReadFile(volumeID, c.caFileName)
-		if err == nil && bytes.Equal(caData, c.rootCAs.CertificatesPEM()) {
-			continue
-		}
-
 		if err := c.store.WriteFiles(meta, map[string][]byte{
 			c.certFileName: certData,
 			c.keyFileName:  keyData,
-			c.caFileName:   c.rootCAs.CertificatesPEM(),
+			c.caFileName:   caPEM,
 		}); err != nil {
 			return fmt.Errorf("%q: failed to write new ca data to volume: %w",
 				volumeID, err)

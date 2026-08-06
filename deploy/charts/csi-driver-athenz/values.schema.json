@@ -307,6 +307,9 @@
         "volumeMounts": {
           "$ref": "#/$defs/helm-values.app.driver.volumeMounts"
         },
+        "volumeWriteMode": {
+          "$ref": "#/$defs/helm-values.app.driver.volumeWriteMode"
+        },
         "volumes": {
           "$ref": "#/$defs/helm-values.app.driver.volumes"
         }
@@ -501,6 +504,11 @@
       "description": "- name: root-cas\nsecret:\n  secretName: root-ca-bundle\n-- Optional extra volume mounts. Useful for mounting root CAs",
       "items": {},
       "type": "array"
+    },
+    "helm-values.app.driver.volumeWriteMode": {
+      "default": "in-place",
+      "description": "-- Controls how certificate data is written into pod volumes.\n`in-place` (default) rewrites existing files so consumer inotify\nwatches survive renewals. `atomic-dir` restores the upstream csi-lib timestamped-directory writer as a rollback path, and silently breaks raw-inotify consumers such as istio-agent on every renewal.",
+      "type": "string"
     },
     "helm-values.app.driver.volumes": {
       "default": [],

@@ -273,7 +273,10 @@ func (o *Options) addVolumeFlags(fs *pflag.FlagSet) {
 			"renewal. `atomic-dir` restores the upstream csi-lib writer, which "+
 			"replaces the files via a new timestamped directory on every write "+
 			"and so silently breaks those watches; it is provided as a rollback "+
-			"path only.")
+			"path only. Note that `in-place` rewrites are not atomic against "+
+			"concurrent readers: a reader that catches the window between the "+
+			"write and the truncate must re-read on the next inotify event, as "+
+			"istio-agent does.")
 }
 
 func (o *Options) addAthenzFlags(fs *pflag.FlagSet) {

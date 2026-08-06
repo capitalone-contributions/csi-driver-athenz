@@ -331,8 +331,9 @@ func New(ctx context.Context, log logr.Logger, opts Options) (*Driver, error) {
 		d.store = inplace
 		caStore = inplace
 	case WriteModeAtomicDir:
-		d.store = store
-		caStore = store
+		atomicDir := newAtomicDirStorage(store)
+		d.store = atomicDir
+		caStore = atomicDir
 	default:
 		return nil, fmt.Errorf("invalid volume write mode %q, must be one of %q or %q",
 			opts.WriteMode, WriteModeInPlace, WriteModeAtomicDir)
