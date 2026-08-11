@@ -73,6 +73,14 @@ app:
       # -- File name where the CA bundles are written to, if enabled.
       ca: ca.crt
 
+    # -- Controls how certificate data is written into pod volumes.
+    # `atomic-dir` (default) is the upstream csi-lib timestamped-directory
+    # writer; it silently breaks raw-inotify consumers such as istio-agent
+    # on every renewal, because replacing a file destroys the watched
+    # inode. `in-place` rewrites existing files instead, so those watches
+    # survive renewals.
+    volumeWriteMode: atomic-dir
+
     # Opt-in provisioning of PKCS12 and JKS keystores alongside the PEM
     # identity files. When `enabled` is false (the default), no keystores
     # are written and the rest of the fields in this block have no effect.

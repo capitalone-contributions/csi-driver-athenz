@@ -155,6 +155,15 @@ managed volumes.
 > ```
 
 -- File name where the CA bundles are written to, if enabled.
+#### **app.driver.volumeWriteMode** ~ `string`
+> Default value:
+> ```yaml
+> atomic-dir
+> ```
+
+-- Controls how certificate data is written into pod volumes.  
+`atomic-dir` (default) is the upstream csi-lib timestamped-directory  
+writer; it silently breaks raw-inotify consumers such as istio-agent on every renewal, because replacing a file destroys the watched inode. `in-place` rewrites existing files instead, so those watches survive renewals.
 #### **app.driver.keystore.enabled** ~ `bool`
 > Default value:
 > ```yaml

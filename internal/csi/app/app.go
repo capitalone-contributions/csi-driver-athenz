@@ -92,6 +92,7 @@ func NewCommand(ctx context.Context) *cobra.Command {
 				JKSFileName:         opts.Volume.JKSFileName,
 				KeystorePassword:    opts.Volume.KeystorePassword,
 				KeystoreAlias:       opts.Volume.KeystoreAlias,
+				WriteMode:           opts.Volume.WriteMode,
 
 				RootCAs: rootCA,
 

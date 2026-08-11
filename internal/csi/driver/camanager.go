@@ -22,12 +22,38 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cert-manager/csi-lib/storage"
+	"github.com/cert-manager/csi-lib/metadata"
 	"github.com/go-logr/logr"
 
 	"github.com/AthenZ/csi-driver-athenz/internal/csi/rootca"
 	"github.com/AthenZ/csi-driver-athenz/internal/version"
 )
+
+// volumeStore is the storage surface camanager needs: on top of the
+// storage.Interface methods it reads files back from mounted pod volumes, so it
+// cannot be satisfied by a metadata-only store. Both *storage.Filesystem and
+// *inplaceWriteStorage implement it.
+type volumeStore interface {
+	// ListVolumes returns the IDs of all volumes in the storage backend.
+	ListVolumes() ([]string, error)
+
+	// ReadMetadata reads the metadata for a single volume.
+	ReadMetadata(volumeID string) (metadata.Metadata, error)
+
+	// ReadFile reads the named file from the volume's data directory.
+	ReadFile(volumeID, name string) ([]byte, error)
+
+	// WriteFiles writes the given data into the volume's data directory.
+	WriteFiles(meta metadata.Metadata, files map[string][]byte) error
+}
+
+// singleFileWriter is implemented by stores that can update one file of a volume
+// without touching the others. *inplaceWriteStorage does; the csi-lib atomic
+// writer cannot, because it treats its payload as the complete desired contents
+// of the volume and deletes everything else.
+type singleFileWriter interface {
+	WriteFile(meta metadata.Metadata, name string, data []byte) error
+}
 
 // camanager is a process responsible for distributing trust bundles to
 // mounting pods.
@@ -35,9 +61,9 @@ type camanager struct {
 	// log is the logger for camanager.
 	log logr.Logger
 
-	// store is the csi-lib file system storage implementation. Must by file
-	// system in order to read volumes back from mounted pods.
-	store *storage.Filesystem
+	// store must be able to read volumes back from mounted pods, and must be
+	// the same store the driver writes with so both use the same write mode.
+	store volumeStore
 
 	// rootCAs exposes the current trust bundle to be propagated, and signals
 	// when a new trust bundle is available.
@@ -55,7 +81,7 @@ type camanager struct {
 // newCAManager constructs a new camanager which distributes new trust bundles
 // to mounted pods, as they are changed.
 func newCAManager(log logr.Logger,
-	store *storage.Filesystem,
+	store volumeStore,
 	rootCAs rootca.Interface,
 	certFileName, keyFileName, caFileName string,
 ) *camanager {
@@ -140,12 +166,46 @@ func (c *camanager) updateRootCAFiles() error {
 		return fmt.Errorf("failed to list managed volumes: %w", err)
 	}
 
+	// A store that can update a single file lets the trust bundle be published
+	// without reading or rewriting the certificate and key at all, which removes
+	// a race with certificate renewal: the full-payload path below reads the
+	// current keypair off the volume and writes that snapshot back alongside the
+	// new CA bundle, so a renewal landing between the read and the write is
+	// silently rolled back to the old pair while the renewal's metadata records
+	// success, and nothing retries until the next renewal. Writing only the CA
+	// file means the worst a concurrent renewal can do is write identical bytes
+	// to it.
+	singleFile, canWriteSingleFile := c.store.(singleFileWriter)
+
 	for _, volumeID := range volumeIDs {
 		meta, err := c.store.ReadMetadata(volumeID)
 		if err != nil {
 			return fmt.Errorf("%q: failed to read metadata from volume: %w", volumeID, err)
 		}
 
+		caPEM := c.rootCAs.CertificatesPEM()
+
+		// No need to re-write CA data again if it hasn't changed on file. A read
+		// error means the file cannot be confirmed to match, so write it.
+		caData, err := c.store.ReadFile(volumeID, c.caFileName)
+		if err == nil && bytes.Equal(caData, caPEM) {
+			continue
+		}
+
+		if canWriteSingleFile {
+			if err := singleFile.WriteFile(meta, c.caFileName, caPEM); err != nil {
+				return fmt.Errorf("%q: failed to write new ca data to volume: %w",
+					volumeID, err)
+			}
+
+			log.Info("updated CA file on volume", "volume", volumeID)
+			continue
+		}
+
+		// The atomic writer deletes every file that is not in its payload, so
+		// the certificate and key have to be read back and written again next to
+		// the CA bundle. This is the path with the renewal race described above;
+		// it only runs in atomic-dir mode.
 		certData, err := c.store.ReadFile(volumeID, c.certFileName)
 		if err != nil {
 			return fmt.Errorf("%q: failed to read certificate file from volume to perform write: %w",
@@ -157,16 +217,10 @@ func (c *camanager) updateRootCAFiles() error {
 				volumeID, err)
 		}
 
-		// No need to re-write CA data again if it hasn't changed on file.
-		caData, err := c.store.ReadFile(volumeID, c.caFileName)
-		if err == nil && bytes.Equal(caData, c.rootCAs.CertificatesPEM()) {
-			continue
-		}
-
 		if err := c.store.WriteFiles(meta, map[string][]byte{
 			c.certFileName: certData,
 			c.keyFileName:  keyData,
-			c.caFileName:   c.rootCAs.CertificatesPEM(),
+			c.caFileName:   caPEM,
 		}); err != nil {
 			return fmt.Errorf("%q: failed to write new ca data to volume: %w",
 				volumeID, err)

@@ -76,6 +76,7 @@ spec:
             - --file-name-key={{ .Values.app.driver.volumeFileName.key }}
             - --file-name-ca={{ .Values.app.driver.volumeFileName.ca }}
             - --source-ca-bundle={{ .Values.app.driver.sourceCABundle }}
+            - --volume-write-mode={{ .Values.app.driver.volumeWriteMode | default "atomic-dir" }}
 
             - --node-id=$(NODE_ID)
             - --endpoint=$(CSI_ENDPOINT)

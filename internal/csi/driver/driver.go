@@ -136,6 +136,13 @@ type Options struct {
 	// JKS keystore. Defaults to DefaultKeystoreAlias if empty.
 	KeystoreAlias string
 
+	// WriteMode selects how certificate data is written into the Pod's volume.
+	// WriteModeAtomicDir (the default when empty) is the upstream csi-lib
+	// timestamped-directory writer. WriteModeInPlace rewrites the existing
+	// files instead, so their inodes - and therefore the inotify watches
+	// consumers hold on them - survive a renewal.
+	WriteMode string
+
 	// RestConfig is used for interacting with the Kubernetes API server.
 	RestConfig *rest.Config
 
@@ -310,11 +317,29 @@ func New(ctx context.Context, log logr.Logger, opts Options) (*Driver, error) {
 		return nil, fmt.Errorf("failed to setup filesystem: %w", err)
 	}
 	// Used by clients to set the stored file's file-system group before
-	// mounting.
+	// mounting. Must be set before the store is wrapped below, since the
+	// in-place writer copies the key at construction.
 	store.FSGroupVolumeAttributeKey = "csi.cert-manager.athenz.io/fs-group"
 
-	d.store = store
-	d.camanager = newCAManager(log, store, opts.RootCAs,
+	// The CA manager writes to the same volumes as the driver, so it has to use
+	// the same writer: if it kept the atomic writer it would recreate the
+	// `..data` layout on a CA bundle update and break every live watch again.
+	var caStore volumeStore
+	switch opts.WriteMode {
+	case WriteModeInPlace:
+		inplace := newInplaceWriteStorage(store, d.certFileName)
+		d.store = inplace
+		caStore = inplace
+	case "", WriteModeAtomicDir:
+		atomicDir := newAtomicDirStorage(store)
+		d.store = atomicDir
+		caStore = atomicDir
+	default:
+		return nil, fmt.Errorf("invalid volume write mode %q, must be one of %q or %q",
+			opts.WriteMode, WriteModeInPlace, WriteModeAtomicDir)
+	}
+
+	d.camanager = newCAManager(log, caStore, opts.RootCAs,
 		d.certFileName, d.keyFileName, d.caFileName)
 
 	cmclient, err := cmclient.NewForConfig(opts.RestConfig)
