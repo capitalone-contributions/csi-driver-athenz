@@ -36,7 +36,7 @@ import (
 type Options struct {
 	// IssuerRef will be used to match against CertificateRequest that need
 	// evaluation.
-	IssuerRef cmmeta.ObjectReference
+	IssuerRef cmmeta.IssuerReference
 
 	// Evaluator will be used to evaluate whether CertificateRequests should be
 	// Approved or Denied.
@@ -62,7 +62,7 @@ type approver struct {
 
 	// issuerRef is the issuerRef that will be matched on CertificateRequests for
 	// evaluation.
-	issuerRef cmmeta.ObjectReference
+	issuerRef cmmeta.IssuerReference
 
 	// evaluator evaluates matched CertificateRequests for whether they should be
 	// approved or denied.

@@ -94,7 +94,7 @@ type Options struct {
 	CertificateRequestDuration time.Duration
 
 	// IssuerRef is the IssuerRef used when creating CertificateRequests.
-	IssuerRef cmmeta.ObjectReference
+	IssuerRef cmmeta.IssuerReference
 
 	// CertificateFileName is the name of the file that the signed certificate
 	// will be written to inside the Pod's volume.
@@ -196,7 +196,7 @@ type Driver struct {
 
 	// issuerRef is the issuerRef that will be set on all created
 	// CertificateRequests.
-	issuerRef cmmeta.ObjectReference
+	issuerRef cmmeta.IssuerReference
 
 	// certFileName, keyFileName, caFileName are the names used when writing file
 	// to volumes.

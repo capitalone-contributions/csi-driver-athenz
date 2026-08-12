@@ -49,7 +49,7 @@ var _ = Context("Approval", func() {
 		namespace corev1.Namespace
 
 		evaluator = evaluatorfake.New()
-		issuerRef = cmmeta.ObjectReference{
+		issuerRef = cmmeta.IssuerReference{
 			Name:  "athenz-ca",
 			Kind:  "ClusterIssuer",
 			Group: "cert-manager.io",
@@ -122,7 +122,7 @@ var _ = Context("Approval", func() {
 			},
 			Spec: cmapi.CertificateRequestSpec{
 				Request: []byte("request"),
-				IssuerRef: cmmeta.ObjectReference{
+				IssuerRef: cmmeta.IssuerReference{
 					Name:  "not-athenz-ca",
 					Kind:  "ClusterIssuer",
 					Group: "cert-manager.io",

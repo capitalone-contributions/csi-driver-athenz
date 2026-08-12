@@ -67,7 +67,7 @@ type OptionsCertManager struct {
 
 	// IssuerRef is the issuer reference that will be used to match on created
 	// CertificateRequests.
-	IssuerRef cmmeta.ObjectReference
+	IssuerRef cmmeta.IssuerReference
 
 	// Multi-tenancy is the flag to enable strict multi-tenancy support where
 	// namespace name has to match with the domain name.
